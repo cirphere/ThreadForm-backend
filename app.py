@@ -46,13 +46,13 @@ def _ensure_dirs():
 
 @app.post("/analyze")
 async def analyze(file: UploadFile):
-    logger.info("===== /analyze 요청 수신 =====")
-    logger.info("filename: %s", file.filename)
-    logger.info("content_type: %s", file.content_type)
-    logger.info("size (headers): %s", file.size)
+    print("===== /analyze 요청 수신 =====")
+    print(f"  filename: {file.filename}")
+    print(f"  content_type: {file.content_type}")
+    print(f"  size (headers): {file.size}")
 
     if not file.filename or not file.filename.lower().endswith(".mp4"):
-        logger.warning("거부: mp4가 아님 — filename=%s", file.filename)
+        print(f"  [거부] mp4가 아님 — filename={file.filename}")
         raise HTTPException(status_code=400, detail="mp4 파일만 업로드 가능합니다.")
 
     file_id = uuid.uuid4().hex[:12]
@@ -62,13 +62,13 @@ async def analyze(file: UploadFile):
         shutil.copyfileobj(file.file, f)
 
     file_size = save_path.stat().st_size
-    logger.info("저장 완료: %s (%s bytes)", save_path, file_size)
+    print(f"  저장 완료: {save_path} ({file_size} bytes)")
 
     if file_size == 0:
-        logger.error("파일 크기가 0 bytes")
+        print("  [에러] 파일 크기가 0 bytes")
         raise HTTPException(status_code=400, detail="빈 파일입니다.")
 
-    logger.info("워커 호출: %s/run", WORKER_URL)
+    print(f"  워커 호출: {WORKER_URL}/run")
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             resp = await client.post(
@@ -79,23 +79,23 @@ async def analyze(file: UploadFile):
                 },
             )
         except httpx.ConnectError:
-            logger.error("워커 연결 실패: %s", WORKER_URL)
+            print(f"  [에러] 워커 연결 실패: {WORKER_URL}")
             raise HTTPException(status_code=503, detail="분석 워커가 실행 중이 아닙니다.")
 
-    logger.info("워커 응답: status=%d", resp.status_code)
-    logger.info("워커 body (500자): %s", resp.text[:500])
+    print(f"  워커 응답: status={resp.status_code}")
+    print(f"  워커 body (500자): {resp.text[:500]}")
 
     if resp.status_code == 422:
         detail = resp.json().get("detail", {})
-        logger.warning("워커 검증 실패: %s", detail)
+        print(f"  [경고] 워커 검증 실패: {detail}")
         raise HTTPException(status_code=400, detail=detail)
     if resp.status_code != 200:
-        logger.error("워커 에러: status=%d body=%s", resp.status_code, resp.text[:300])
+        print(f"  [에러] 워커 에러: status={resp.status_code} body={resp.text[:300]}")
         raise HTTPException(status_code=502, detail="분석 중 오류가 발생했습니다.")
 
     data = resp.json()
     analysis_id = data["analysis_result"]["analysis_id"]
-    logger.info("===== 분석 완료: %s =====", analysis_id)
+    print(f"===== 분석 완료: {analysis_id} =====")
 
     return {
         **data["analysis_result"],
